@@ -898,9 +898,14 @@ elemToParPart' ns element
   , picElems <- findElements (QName "pic" (Just pic_ns) (Just "pic")) drawingElem
   = let (title, alt) = getTitleAndAlt ns drawingElem
         a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
-        drawings = map (\el ->
-                        ((findElement (QName "blip" (Just a_ns) (Just "a")) el
-                          >>= findAttrByName ns "r" "embed"), el)) picElems
+        svg_ns =  "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+        getRid el = do
+          pictureElement <-
+                    findElement (QName "svgBlip" (Just svg_ns) (Just "asvg")) el
+                <|> findElement (QName "blip" (Just a_ns) (Just "a")) el
+          findAttrByName ns "r" "link" pictureElement
+             <|> findAttrByName ns "r" "embed" pictureElement
+        drawings = map (\el ->(getRid el, el)) picElems
     in mapM (\case
                 (Just s, el) -> do
                   (fp, bs) <- expandDrawingId s
@@ -1020,9 +1025,14 @@ childElemToRun ns element
   , picElems <- findElements (QName "pic" (Just pic_ns) (Just "pic")) element
   = let (title, alt) = getTitleAndAlt ns element
         a_ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
-        drawings = map (\el ->
-                         ((findElement (QName "blip" (Just a_ns) (Just "a")) el
-                             >>= findAttrByName ns "r" "embed"), el)) picElems
+        svg_ns =  "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+        getRid el = do
+          pictureElement <-
+                    findElement (QName "svgBlip" (Just svg_ns) (Just "asvg")) el
+                <|> findElement (QName "blip" (Just a_ns) (Just "a")) el
+          findAttrByName ns "r" "link" pictureElement
+             <|> findAttrByName ns "r" "embed" pictureElement
+        drawings = map (\el ->(getRid el, el)) picElems
     in mapM (\case
                 (Just s, el) -> do
                   (fp, bs) <- expandDrawingId s

@@ -1,0 +1,38 @@
+[ Para
+    [ Str "The"
+    , Space
+    , Str "canvas"
+    , Space
+    , Str "tests"
+    , Space
+    , Str "childElemToRun."
+    , Space
+    , Str "The"
+    , Space
+    , Str "inline"
+    , Space
+    , Str "tests"
+    , Space
+    , Str "elemToParPart\8217"
+    ]
+, Para
+    [ Image
+        ( ""
+        , []
+        , [ ( "width" , "6.0in" ) , ( "height" , "3.5in" ) ]
+        )
+        []
+        ( "media/image2.svg" , "" )
+    ]
+, Para
+    [ Image
+        ( ""
+        , []
+        , [ ( "width" , "1.53125in" ) , ( "height" , "1.8125in" ) ]
+        )
+        []
+        ( "media/image2.svg" , "" )
+    , Space
+    , Str "test"
+    ]
+]

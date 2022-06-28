@@ -235,6 +235,10 @@ tests = [ testGroup "document"
             "collapse overlapping targets (anchor spans)"
             "docx/overlapping_targets.docx"
             "docx/overlapping_targets.native"
+          , testCompare
+            "SVG"
+            "docx/svg.docx"
+            "docx/svg.native"
           ]
         , testGroup "blocks"
           [ testCompare
