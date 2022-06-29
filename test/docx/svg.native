@@ -35,4 +35,33 @@
     , Space
     , Str "test"
     ]
+, Para
+    [ Str "Testing"
+    , Space
+    , Str "external"
+    , Space
+    , Str "SVG"
+    , Space
+    , Str "support"
+    ]
+, Para
+    [ Image
+        ( ""
+        , []
+        , [ ( "width" , "6.0in" ) , ( "height" , "3.5in" ) ]
+        )
+        []
+        ( "file:///Y:\\path\\image\\inkscape-cube.svg" , "" )
+    ]
+, Para
+    [ Image
+        ( ""
+        , []
+        , [ ( "width" , "1.53125in" ) , ( "height" , "1.8125in" ) ]
+        )
+        []
+        ( "file:///Y:\\path\\image\\inkscape-cube.svg" , "" )
+    , Space
+    , Str "test"
+    ]
 ]

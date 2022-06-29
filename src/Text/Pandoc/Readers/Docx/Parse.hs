@@ -325,6 +325,7 @@ data ParPart = PlainRun Run
              | InternalHyperLink Anchor [ParPart]
              | ExternalHyperLink URL [ParPart]
              | Drawing FilePath T.Text T.Text B.ByteString Extent -- title, alt
+             | ExternalDrawing FilePath T.Text T.Text Extent      -- title, alt
              | Chart                                              -- placeholder for now
              | Diagram                                            -- placeholder for now
              | PlainOMath [Exp]
@@ -335,6 +336,7 @@ data Run = Run RunStyle [RunElem]
          | Footnote [BodyPart]
          | Endnote [BodyPart]
          | InlineDrawing FilePath T.Text T.Text B.ByteString Extent -- title, alt
+         | ExternalInlineDrawing FilePath T.Text T.Text Extent      -- title, alt
          | InlineChart          -- placeholder
          | InlineDiagram        -- placeholder
            deriving Show
@@ -342,7 +344,10 @@ data Run = Run RunStyle [RunElem]
 data RunElem = TextRun T.Text | LnBrk | Tab | SoftHyphen | NoBreakHyphen
              deriving Show
 
-type Target = T.Text
+data Target = Embeded TargetPath | External TargetPath
+             deriving Show
+
+type TargetPath = T.Text
 type Anchor = T.Text
 type URL = T.Text
 type BookMarkId = T.Text
@@ -495,7 +500,10 @@ relElemToRelationship fp relType element | qName (elName element) == "Relationsh
     let frontOfFp = T.pack $ takeWhile (/= '_') fp
     let target' = fromMaybe target $
            T.stripPrefix frontOfFp $ T.dropWhile (== '/') target
-    return $ Relationship relType relId target'
+    let targetMode = T.unpack <$> findAttr (QName "TargetMode" Nothing Nothing) element
+    case targetMode of
+      Just "External" -> return $ Relationship relType relId (External target')
+      _               -> return $ Relationship relType relId (Embeded target')
 relElemToRelationship _ _ _ = Nothing
 
 filePathToRelationships :: Archive -> FilePath -> FilePath ->  [Relationship]
@@ -776,20 +784,22 @@ emptyFldCharContents = map
     FldCharContent info _ -> FldCharContent info []
     _ -> x)
 
-expandDrawingId :: T.Text -> D (FilePath, B.ByteString)
+expandDrawingId :: T.Text -> D (FilePath, Maybe B.ByteString)
 expandDrawingId s = do
   location <- asks envLocation
-  target <- asks (fmap T.unpack . lookupRelationship location s . envRelationships)
+  target <- asks (lookupRelationship location s . envRelationships)
   case target of
-    Just filepath -> do
+    Just (Embeded filepath)  -> do
+      let filepath' = T.unpack filepath
       media <- asks envMedia
-      let filepath' = case filepath of
+      let filepath'' = case filepath' of
                         ('/':rest) -> rest
-                        _ -> "word/" ++ filepath
-      case lookup filepath' media of
-        Just bs -> return (filepath, bs)
+                        _ -> "word/" ++ filepath'
+      case lookup filepath'' media of
+        Just bs' -> return (filepath', Just bs')
         Nothing -> throwError DocxError
-    Nothing -> throwError DocxError
+    Just (External filepath) -> return (T.unpack filepath, Nothing)
+    _                        -> throwError DocxError
 
 getTitleAndAlt :: NameSpaces -> Element -> (T.Text, T.Text)
 getTitleAndAlt ns element =
@@ -910,7 +920,9 @@ elemToParPart' ns element
                 (Just s, el) -> do
                   (fp, bs) <- expandDrawingId s
                   let extent = elemToExtent el <|> elemToExtent element
-                  return $ Drawing fp title alt bs extent
+                  case bs of
+                    Just bs' -> return $ Drawing fp title alt bs' extent
+                    Nothing  -> return $ ExternalDrawing fp title alt extent
                 (Nothing, _) -> throwError WrongElem)
             drawings
 -- The two cases below are an attempt to deal with images in deprecated vml format.
@@ -922,7 +934,11 @@ elemToParPart' ns element
                   >>= findAttrByName ns "r" "id"
     in
      case drawing of
-       Just s -> expandDrawingId s >>= (\(fp, bs) -> return [Drawing fp "" "" bs Nothing])
+       Just s -> do
+         (fp, bs) <- expandDrawingId s 
+         case bs of
+           Just bs' -> return $ [ Drawing fp "" "" bs' Nothing ]
+           Nothing  -> return $ [ ExternalDrawing fp "" "" Nothing ]
        Nothing -> throwError WrongElem
 elemToParPart' ns element
   | isElem ns "w" "r" element
@@ -930,7 +946,11 @@ elemToParPart' ns element
   , Just shapeElem <- findChildByName ns "v" "shape" objectElem
   , Just imagedataElem <- findChildByName ns "v" "imagedata" shapeElem
   , Just drawingId <- findAttrByName ns "r" "id" imagedataElem
-  = expandDrawingId drawingId >>= (\(fp, bs) -> return [Drawing fp "" "" bs Nothing])
+  = do
+    (fp, bs) <- expandDrawingId drawingId 
+    case bs of
+      Just bs' -> return [ Drawing fp "" "" bs' Nothing ]
+      Nothing  -> return [ ExternalDrawing fp "" "" Nothing ]
 -- Diagram
 elemToParPart' ns element
   | isElem ns "w" "r" element
@@ -965,12 +985,12 @@ elemToParPart' ns element
     children <- mconcat <$> mapD (elemToParPart ns) (elChildren element)
     rels <- asks envRelationships
     case lookupRelationship location relId rels of
-      Just target ->
+      Just ( External target ) ->
          case findAttrByName ns "w" "anchor" element of
              Just anchor -> return
                [ExternalHyperLink (target <> "#" <> anchor) children]
              Nothing -> return [ExternalHyperLink target children]
-      Nothing     -> return [ExternalHyperLink "" children]
+      _                        -> return [ExternalHyperLink "" children]
 elemToParPart' ns element
   | isElem ns "w" "hyperlink" element
   , Just anchor <- findAttrByName ns "w" "anchor" element = do
@@ -1037,7 +1057,9 @@ childElemToRun ns element
                 (Just s, el) -> do
                   (fp, bs) <- expandDrawingId s
                   let extent = elemToExtent el <|> elemToExtent element
-                  return $ InlineDrawing fp title alt bs extent
+                  case bs of
+                    Just bs' -> return $ InlineDrawing fp title alt bs' extent
+                    Nothing  -> return $ ExternalInlineDrawing fp title alt extent
                 (Nothing, _) -> throwError WrongElem)
        drawings
 childElemToRun ns element

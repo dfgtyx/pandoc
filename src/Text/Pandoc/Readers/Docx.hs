@@ -331,6 +331,8 @@ runToInlines (Endnote bps) = note . smushBlocks <$> mapM bodyPartToBlocks bps
 runToInlines (InlineDrawing fp title alt bs ext) = do
   (lift . lift) $ P.insertMedia fp Nothing bs
   return $ imageWith (extentToAttr ext) (T.pack fp) title $ text alt
+runToInlines (ExternalInlineDrawing fp title alt ext) = 
+  return $ imageWith (extentToAttr ext) (T.pack fp) title $ text alt
 runToInlines InlineChart = return $ spanWith ("", ["chart"], []) $ text "[CHART]"
 runToInlines InlineDiagram = return $ spanWith ("", ["diagram"], []) $ text "[DIAGRAM]"
 
@@ -442,6 +444,8 @@ parPartToInlines' (BookMark _ anchor) =
         return $ spanWith (newAnchor, ["anchor"], []) mempty
 parPartToInlines' (Drawing fp title alt bs ext) = do
   (lift . lift) $ P.insertMedia fp Nothing bs
+  return $ imageWith (extentToAttr ext) (T.pack fp) title $ text alt
+parPartToInlines' (ExternalDrawing fp title alt ext) = do
   return $ imageWith (extentToAttr ext) (T.pack fp) title $ text alt
 parPartToInlines' Chart =
   return $ spanWith ("", ["chart"], []) $ text "[CHART]"
