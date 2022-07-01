@@ -487,6 +487,7 @@ getAllExtensions f = universalExtensions <> getAll f
     , Ext_native_numbering
     , Ext_styles
     , Ext_citations
+    , Ext_rebase_relative_paths
     ]
   getAll "opendocument"    = extensionsFromList
     [ Ext_empty_paragraphs

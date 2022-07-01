@@ -312,6 +312,10 @@ convertWithOpts opts = do
                        || writerNameBase == "docx") -- for fallback pngs
                       then fillMediaBag
                       else return)
+              >=> ( if ( (readerNameBase == "docx")
+                       && (extensionEnabled Ext_rebase_relative_paths readerExts) )
+                       then winwordFindLinkedImages
+                       else return )
               >=> return . adjustMetadata (metadataFromFile <>)
               >=> return . adjustMetadata (<> optMetadata opts)
               >=> return . adjustMetadata (<> cslMetadata)

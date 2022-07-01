@@ -49,6 +49,7 @@ module Text.Pandoc.Class.PandocMonad
   , readDataFile
   , readMetadataFile
   , fillMediaBag
+  , winwordFindLinkedImages
   , toLang
   , setTranslations
   , translateTerm
@@ -62,14 +63,16 @@ import Control.Monad.Except (MonadError (catchError, throwError),
                              MonadTrans, lift, when)
 import Data.List (foldl')
 import Data.Time (UTCTime)
+import Data.Maybe
 import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds,
                              posixSecondsToUTCTime)
 import Data.Time.LocalTime (TimeZone, ZonedTime, utcToZonedTime)
 import Network.URI ( escapeURIString, nonStrictRelativeTo,
                      unEscapeString, parseURIReference, isAllowedInURI,
                      parseURI, URI(..) )
-import System.FilePath ((</>), takeExtension, dropExtension,
-                        isRelative, splitDirectories, makeRelative)
+import System.FilePath ((</>), takeExtension, dropExtension, takeDirectory,
+                        isRelative, splitDirectories, makeRelative, normalise,
+                        splitDrive, splitPath)
 import System.Random (StdGen)
 import Text.Collate.Lang (Lang(..), parseLang, renderLang)
 import Text.Pandoc.Class.CommonState (CommonState (..))
@@ -711,6 +714,102 @@ fillMediaBag d = walkM handleImage d
                   return $ Span ("",["image"],[]) lab
                 _ -> throwError e)
         handleImage x = return x
+
+-- This function resolves external images using an algorithm similar to what
+-- WINWORD.EXE does. Only for docx reader and only for rebase_relative_paths
+-- extension
+winwordFindLinkedImages :: PandocMonad m => Pandoc -> m Pandoc
+winwordFindLinkedImages d = do
+  outFile <- getsCommonState stOutputFile
+  let dir = fromMaybe "." (takeDirectory <$> outFile)
+  walkM (handleImage dir) d
+  
+  -- Winword interprets URLs without scheme as always local, and absolute
+  -- paths are made relative by searching for the each path component in the
+  -- local directory starting with the file and adding more directories.
+  -- I have come across a few files with relative paths, but word seems
+  -- to normally use file:// scheme with absolute path.
+  --
+  -- for example suppose a word document at c:\docs\a.docx points to
+  -- file:\\y:\test\block\picture.png
+  --
+  -- Word tries to resolve the external as follows
+  --
+  -- (1) y:\test\block\picture.png
+  -- (2) c:\docs\picture.png
+  -- (3) c:\docs\block\picture.png
+  -- (4) and so on
+  --
+  -- This algorithm has a few subtle differences from words behavior:
+  --
+  -- (1) It searches relative to the output file, not the input file. For
+  --     output to stdout it searched relative to "." In Winword the
+  --     distinction between input and output file is degenerate. Pandoc,
+  --     on the other hand can have multiple input files, so using the
+  --     output file is logical choice.
+  -- (2) because an absolute path is useless for file sharing in most
+  --     other formats (1) is fallback, not first choice
+  where handleImage :: PandocMonad m => FilePath -> Inline -> m Inline
+        handleImage dir (Image attr lab (src, tit)) = do
+          mediabag <- getMediaBag
+          let fp = T.unpack src
+          case lookupMedia fp mediabag of
+             -- in media bag, do nothing
+             Just _ -> return $ Image attr lab (src, tit)
+             Nothing -> do 
+               src' <- fixSrc dir src
+               return $ Image attr lab (src', tit)
+        handleImage _ x = return x
+
+        fixSrc :: PandocMonad m => FilePath -> T.Text -> m T.Text
+        fixSrc dir src = do
+          attempt <- 
+              (doSearch dir)
+            $ nothingIfRemote
+            $ parseURIReference
+            $ T.unpack
+            $ (T.map convertSlash) $ src
+          return (fromMaybe src attempt)
+
+        convertSlash '\\' = '/'
+        convertSlash x    = x
+
+        nothingIfRemote :: Maybe URI -> Maybe URI
+        nothingIfRemote Nothing = Nothing
+        nothingIfRemote u
+          | (Just u') <- u = case uriScheme u' of
+            "file:" -> u
+            ""      -> u
+            -- link to a http:// resource. Never thought about this.
+            _       -> Nothing
+
+        doSearch :: PandocMonad m => FilePath-> Maybe URI -> m (Maybe T.Text)
+        doSearch _ Nothing  = return Nothing
+        doSearch dir (Just u) = do
+          let p = uriPath u
+              -- Windows related quirks that this code deals with:
+              -- (1) often get something like /c:/... the call to normalise
+              --     eliminates leading slash. This makes the next step work
+              --     right
+              -- (2) splitDrive split the leading drive specifier "/" for
+              --     UNIX "[n]:/" for windows to first part of tuple. leaving
+              --     a relative path in the second part of the tuple.
+              p' = snd $ splitDrive $ System.FilePath.normalise p
+          -- recursively try the file name adding directory depth each time
+          result <- (iterateSegments dir) $ reverse $ splitPath $ p'
+          return $ (T.map convertSlash) <$> T.pack <$> result
+
+        iterateSegments :: PandocMonad m => FilePath -> [String] -> m (Maybe String)
+        iterateSegments dir (s:xs) = do
+          let candidate = System.FilePath.normalise (dir ++ "/" ++ s)
+          b <- fileExists candidate
+          case b of
+            True -> return $ Just $ s
+            False 
+              -- splitpath preserves slashes so no need to insert that
+              | (s':xs') <- xs -> (iterateSegments dir) $ ((System.FilePath.normalise $ s' ++ s):xs')
+              | otherwise -> return $ Nothing
+        iterateSegments _ [] = return Nothing
 
 -- This requires UndecidableInstances.  We could avoid that
 -- by repeating the definitions below for every monad transformer
