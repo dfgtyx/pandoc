@@ -21,12 +21,15 @@ module Text.Pandoc.Readers.Docx.Parse.Styles (
   , CharStyle
   , ParaStyleId(..)
   , ParStyle(..)
+  , TableStyleId(..)
+  , TableStyle
   , ParIndentation(..)
   , RunStyle(..)
   , HasStyleName
   , StyleName
   , ParaStyleName
   , CharStyleName
+  , TableStyleName
   , FromStyleName
   , VertAlign(..)
   , StyleId
@@ -62,10 +65,14 @@ newtype CharStyleId   = CharStyleId T.Text
   deriving (Show, Eq, Ord, IsString, FromStyleId)
 newtype ParaStyleId   = ParaStyleId T.Text
   deriving (Show, Eq, Ord, IsString, FromStyleId)
+newtype TableStyleId  = TableStyleId T.Text
+  deriving (Show, Eq, Ord, IsString, FromStyleId)
 
 newtype CharStyleName = CharStyleName CIString
   deriving (Show, Eq, Ord, IsString, FromStyleName)
 newtype ParaStyleName = ParaStyleName CIString
+  deriving (Show, Eq, Ord, IsString, FromStyleName)
+newtype TableStyleName = TableStyleName CIString
   deriving (Show, Eq, Ord, IsString, FromStyleName)
 
 -- Case-insensitive comparisons
@@ -129,7 +136,12 @@ data ParStyle = ParStyle { headingLev    :: Maybe (ParaStyleName, Int)
                          , pStyleName    :: ParaStyleName
                          , pStyleId      :: ParaStyleId
                          }
-                    deriving Show
+                deriving Show
+
+data TableStyle = TableStyle { tParentStyle  :: Maybe TableStyle
+                             , tStyleName    :: TableStyleName
+                             , tStyleId      :: TableStyleId
+                             } deriving Show
 
 defaultRunStyle :: RunStyle
 defaultRunStyle = RunStyle { isBold = Nothing
@@ -146,20 +158,22 @@ defaultRunStyle = RunStyle { isBold = Nothing
                            }
 
 archiveToStyles'
-  :: (Ord k1, Ord k2, ElemToStyle a1, ElemToStyle a2)
-  => (a1 -> k1) -> (a2 -> k2) -> Archive -> (M.Map k1 a1, M.Map k2 a2)
-archiveToStyles' conv1 conv2 zf =
+  :: (Ord k1, Ord k2, Ord k3, ElemToStyle a1, ElemToStyle a2, ElemToStyle a3)
+  => (a1 -> k1) -> (a2 -> k2) -> (a3 -> k3) -> Archive -> (M.Map k1 a1, M.Map k2 a2, M.Map k3 a3)
+archiveToStyles' conv1 conv2 conv3 zf =
   case findEntryByPath "word/styles.xml" zf of
-    Nothing -> (M.empty, M.empty)
+    Nothing -> (M.empty, M.empty, M.empty)
     Just entry ->
       case parseXMLElement . UTF8.toTextLazy . fromEntry $ entry of
-        Left _ -> (M.empty, M.empty)
+        Left _ -> (M.empty, M.empty, M.empty)
         Right styElem ->
           let namespaces = elemToNameSpaces styElem
           in
            ( M.fromList $ map (\r -> (conv1 r, r)) $
                buildBasedOnList namespaces styElem Nothing,
              M.fromList $ map (\p -> (conv2 p, p)) $
+               buildBasedOnList namespaces styElem Nothing,
+             M.fromList $ map (\t -> (conv3 t, t)) $
                buildBasedOnList namespaces styElem Nothing)
 
 isBasedOnStyle :: (ElemToStyle a, FromStyleId (StyleId a)) => NameSpaces -> Element -> Maybe a -> Bool
@@ -220,6 +234,22 @@ instance HasStyleId ParStyle where
 instance HasStyleName ParStyle where
   type StyleName ParStyle = ParaStyleName
   getStyleName = pStyleName
+
+instance ElemToStyle TableStyle where
+  cStyleType _ = "table"
+  elemToStyle ns element parentStyle
+    | isElem ns "w" "style" element
+    , Just "table" <- findAttrByName ns "w" "type" element
+    = elemToTableStyleData ns element parentStyle
+    | otherwise = Nothing
+
+instance HasStyleId TableStyle where
+  type StyleId TableStyle = TableStyleId
+  getStyleId = tStyleId
+
+instance HasStyleName TableStyle where
+  type StyleName TableStyle = TableStyleName
+  getStyleName = tStyleName
 
 getStyleChildren :: (ElemToStyle a) => NameSpaces -> Element -> Maybe a -> [a]
 getStyleChildren ns element parentStyle
@@ -345,3 +375,14 @@ elemToParStyleData ns element parentStyle
       , pStyleId = ParaStyleId styleId
       }
 elemToParStyleData _ _ _ = Nothing
+
+elemToTableStyleData :: NameSpaces -> Element -> Maybe TableStyle -> Maybe TableStyle
+elemToTableStyleData ns element parentStyle
+  | Just styleId <- findAttrByName ns "w" "styleId" element
+  , Just styleName <- getElementStyleName ns element
+  = Just $ TableStyle
+      { tParentStyle = parentStyle
+      , tStyleName = styleName
+      , tStyleId = TableStyleId styleId
+      }
+elemToTableStyleData _ _ _ = Nothing

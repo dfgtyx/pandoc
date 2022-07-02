@@ -33,6 +33,7 @@ module Text.Pandoc.Readers.Docx.Parse ( Docx(..)
                                       , ParagraphStyle(..)
                                       , ParStyle
                                       , CharStyle(cStyleData)
+                                      , TableStyle
                                       , Row(..)
                                       , TblHeader(..)
                                       , Cell(..)
@@ -101,6 +102,7 @@ data ReaderEnv = ReaderEnv { envNotes         :: Notes
                            , envFont          :: Maybe Font
                            , envCharStyles    :: CharStyleMap
                            , envParStyles     :: ParStyleMap
+                           , envTableStyles   :: TableStyleMap
                            , envLocation      :: DocumentLocation
                            , envDocXmlPath    :: FilePath
                            }
@@ -177,6 +179,8 @@ type CharStyleMap = M.Map CharStyleId CharStyle
 
 type ParStyleMap = M.Map ParaStyleId ParStyle
 
+type TableStyleMap = M.Map TableStyleId TableStyle
+
 data Numbering = Numbering NameSpaces [Numb] [AbstractNumb]
                  deriving Show
 
@@ -233,15 +237,16 @@ defaultParagraphStyle = ParagraphStyle { pStyle = []
                                        , pBidi       = Just False
                                        }
 
-
 data BodyPart = Paragraph ParagraphStyle [ParPart]
               | ListItem ParagraphStyle T.Text T.Text (Maybe Level) [ParPart]
-              | Tbl T.Text TblGrid TblLook [Row]
+              | Tbl TblDescription TblStyle TblGrid TblLook [Row]
               | TblCaption ParagraphStyle [ParPart]
               | OMathPara [Exp]
               deriving Show
 
 type TblGrid = [Integer]
+type TblDescription = T.Text
+type TblStyle = Maybe TableStyle
 
 newtype TblLook = TblLook {firstRowFormatting::Bool}
               deriving Show
@@ -366,7 +371,7 @@ archiveToDocxWithWarnings archive = do
       numbering = archiveToNumbering archive
       rels      = archiveToRelationships archive docXmlPath
       media     = filteredFilesFromArchive archive filePathIsMedia
-      (styles, parstyles) = archiveToStyles archive
+      (styles, parstyles, tablestyles) = archiveToStyles archive
       rEnv = ReaderEnv { envNotes = notes
                        , envComments = comments
                        , envNumbering = numbering
@@ -375,6 +380,7 @@ archiveToDocxWithWarnings archive = do
                        , envFont = Nothing
                        , envCharStyles = styles
                        , envParStyles = parstyles
+                       , envTableStyles = tablestyles
                        , envLocation = InDocument
                        , envDocXmlPath = docXmlPath
                        }
@@ -423,8 +429,8 @@ elemToBody ns element | isElem ns "w" "body" element =
   fmap Body (mapD (elemToBodyPart ns) (elChildren element))
 elemToBody _ _ = throwError WrongElem
 
-archiveToStyles :: Archive -> (CharStyleMap, ParStyleMap)
-archiveToStyles = archiveToStyles' getStyleId getStyleId
+archiveToStyles :: Archive -> (CharStyleMap, ParStyleMap, TableStyleMap)
+archiveToStyles = archiveToStyles' getStyleId getStyleId getStyleId
 
 class HasParentStyle a where
   getParentStyle :: a -> Maybe a
@@ -735,6 +741,7 @@ elemToBodyPart ns element
 
 elemToBodyPart ns element
   | isElem ns "w" "tbl" element = do
+    tableStyles <- asks envTableStyles
     let tblProperties = findChildByName ns "w" "tblPr" element
         caption = fromMaybe "" $ tblProperties
                    >>= findChildByName ns "w" "tblCaption"
@@ -742,6 +749,11 @@ elemToBodyPart ns element
         description = fromMaybe "" $ tblProperties
                        >>= findChildByName ns "w" "tblDescription"
                        >>= findAttrByName ns "w" "val"
+-- HERE
+        style = tblProperties
+                >>= findChildByName ns "w" "tblStyle"
+                >>= findAttrByName ns "w" "val"
+                >>= flip M.lookup tableStyles . TableStyleId
         grid' = case findChildByName ns "w" "tblGrid" element of
           Just g  -> elemToTblGrid ns g
           Nothing -> return []
@@ -750,11 +762,10 @@ elemToBodyPart ns element
                      of
                        Just l  -> elemToTblLook ns l
                        Nothing -> return defaultTblLook
-
     grid <- grid'
     tblLook <- tblLook'
     rows <- mapD (elemToRow ns) (elChildren element)
-    return $ Tbl (caption <> description) grid tblLook rows
+    return $ Tbl (caption <> description) style grid tblLook rows
 elemToBodyPart _ _ = throwError WrongElem
 
 lookupRelationship :: DocumentLocation -> RelId -> [Relationship] -> Maybe Target

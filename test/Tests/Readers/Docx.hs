@@ -337,6 +337,11 @@ tests = [ testGroup "document"
             "a table with a header which contains rowspans greater than 1"
             "docx/table_header_rowspan.docx"
             "docx/table_header_rowspan.native"
+          , testCompareWithOpts
+            def{readerExtensions=extensionsFromList [Ext_styles]}
+            "a table with a header which contains rowspans greater than 1 (+styles)"
+            "docx/table_header_rowspan.docx"
+            "docx/table_header_rowspan_with_styles.native"
           , testCompare
             "tables with one row"
             "docx/table_one_row.docx"

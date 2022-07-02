@@ -741,9 +741,9 @@ bodyPartToBlocks (ListItem pPr _ _ _ parparts) =
     bodyPartToBlocks $ Paragraph pPr' parparts
 bodyPartToBlocks (TblCaption _ _) =
   return $ para mempty -- collected separately
-bodyPartToBlocks (Tbl _ _ _ []) =
+bodyPartToBlocks (Tbl _ _ _ _ []) =
   return $ para mempty
-bodyPartToBlocks (Tbl cap grid look parts) = do
+bodyPartToBlocks (Tbl cap style grid look parts) = do
   captions <- gets docxTableCaptions
   fullCaption <- case captions of
     c : cs -> do
@@ -768,11 +768,24 @@ bodyPartToBlocks (Tbl cap grid look parts) = do
       totalWidth = sum grid
       widths = (\w -> ColWidth (fromInteger w / fromInteger totalWidth)) <$> grid
 
-  return $ table cap'
-                 (zip alignments widths)
-                 (TableHead nullAttr headerCells)
-                 [TableBody nullAttr 0 [] bodyCells]
-                 (TableFoot nullAttr [])
+  opts <- asks docxOptions
+  let makeAttr :: Maybe TableStyle -> Attr
+      makeAttr a = do
+        case a of
+          Just a' -> 
+            if isEnabled Ext_styles opts then
+              ("", [], [("custom-style", fromStyleName $ getStyleName a')])
+            else
+              nullAttr
+          Nothing -> nullAttr
+
+  return $ tableWith (makeAttr style)
+                     cap'
+                     (zip alignments widths)
+                     (TableHead nullAttr headerCells)
+                     [TableBody nullAttr 0 [] bodyCells]
+                     (TableFoot nullAttr [])
+
 bodyPartToBlocks (OMathPara e) =
   return $ para $ displayMath (writeTeX e)
 
