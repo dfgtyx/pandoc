@@ -124,7 +124,8 @@ data ParIndentation = ParIndentation { leftParIndent    :: Maybe Integer
 
 data ParStyle = ParStyle { headingLev    :: Maybe (ParaStyleName, Int)
                          , indent        :: Maybe ParIndentation
-                         , numInfo       :: Maybe (T.Text, T.Text)
+                         , numInfoId     :: Maybe T.Text
+                         , numInfoLvl    :: Maybe T.Text
                          , psParentStyle :: Maybe ParStyle
                          , pStyleName    :: ParaStyleName
                          , pStyleId      :: ParaStyleId
@@ -331,6 +332,20 @@ getNumInfo ns element = do
            findAttrByName ns "w" "val"
   return (numId, lvl)
 
+getNumId :: NameSpaces -> Element -> Maybe T.Text
+getNumId ns element =  do
+  let numPr = findChildByName ns "w" "pPr" element >>=
+              findChildByName ns "w" "numPr"
+  numPr >>= findChildByName ns "w" "numId" >>=
+            findAttrByName ns "w" "val"
+
+getLvl :: NameSpaces -> Element -> Maybe T.Text
+getLvl ns element = do
+  let numPr = findChildByName ns "w" "pPr" element >>=
+              findChildByName ns "w" "numPr"
+  numPr >>= findChildByName ns "w" "ilvl" >>=
+            findAttrByName ns "w" "val"
+
 elemToParStyleData :: NameSpaces -> Element -> Maybe ParStyle -> Maybe ParStyle
 elemToParStyleData ns element parentStyle
   | Just styleId <- findAttrByName ns "w" "styleId" element
@@ -339,7 +354,8 @@ elemToParStyleData ns element parentStyle
       {
         headingLev = getHeaderLevel ns element
       , indent = getIndentation ns element
-      , numInfo = getNumInfo ns element
+      , numInfoId = getNumId ns element
+      , numInfoLvl = getLvl ns element
       , psParentStyle = parentStyle
       , pStyleName = styleName
       , pStyleId = ParaStyleId styleId

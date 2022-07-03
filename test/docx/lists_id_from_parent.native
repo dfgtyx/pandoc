@@ -1,0 +1,66 @@
+[ OrderedList
+    ( 1 , Decimal , OneParen )
+    [ [ Para
+          [ Str "Line"
+          , Space
+          , Str "1."
+          , Space
+          , Str "This"
+          , Space
+          , Str "is"
+          , Space
+          , Str "level"
+          , Space
+          , Str "1"
+          ]
+      ]
+    , [ Para
+          [ Str "Line"
+          , Space
+          , Str "2."
+          , Space
+          , Str "This"
+          , Space
+          , Str "is"
+          , Space
+          , Str "level"
+          , Space
+          , Str "1"
+          ]
+      , OrderedList
+          ( 1 , LowerAlpha , DefaultDelim )
+          [ [ Para
+                [ Str "Line"
+                , Space
+                , Str "3."
+                , Space
+                , Str "This"
+                , Space
+                , Str "is"
+                , Space
+                , Str "level"
+                , Space
+                , Str "2"
+                ]
+            , OrderedList
+                ( 1 , LowerRoman , DefaultDelim )
+                [ [ Para
+                      [ Str "Line"
+                      , Space
+                      , Str "4."
+                      , Space
+                      , Str "This"
+                      , Space
+                      , Str "is"
+                      , Space
+                      , Str "level"
+                      , Space
+                      , Str "3"
+                      ]
+                  ]
+                ]
+            ]
+          ]
+      ]
+    ]
+]
