@@ -442,7 +442,8 @@ constructBogusParStyleData :: ParaStyleName -> ParStyle
 constructBogusParStyleData stName = ParStyle
   { headingLev = Nothing
   , indent = Nothing
-  , numInfo = Nothing
+  , numInfoId = Nothing
+  , numInfoLvl = Nothing
   , psParentStyle = Nothing
   , pStyleName = stName
   , pStyleId = ParaStyleId . T.filter (/=' ') . fromStyleName $ stName
@@ -685,8 +686,14 @@ testBitMask bitMaskS n =
 pHeading :: ParagraphStyle -> Maybe (ParaStyleName, Int)
 pHeading = getParStyleField headingLev . pStyle
 
-pNumInfo :: ParagraphStyle -> Maybe (T.Text, T.Text)
-pNumInfo = getParStyleField numInfo . pStyle
+pNumInfoId :: ParagraphStyle -> Maybe T.Text
+pNumInfoId = getParStyleField numInfoId . pStyle
+
+pNumInfoLvl :: ParagraphStyle -> Maybe T.Text
+pNumInfoLvl = getParStyleField numInfoLvl . pStyle
+
+pNumInfo :: ParagraphStyle -> (Maybe T.Text, Maybe T.Text)
+pNumInfo ps = (pNumInfoId ps,  pNumInfoLvl ps)
 
 pStyleIndentation :: ParagraphStyle -> Maybe ParIndentation
 pStyleIndentation style = (getParStyleField indent . pStyle) style
@@ -714,7 +721,8 @@ elemToBodyPart ns element
       -- want to infer a list from the styles if it is NOT a heading.
       let parparts = parparts' ++ (openFldCharsToParParts fldCharState) in
         case pHeading parstyle of
-          Nothing | Just (numId, lvl) <- pNumInfo parstyle -> do
+          Nothing | (Just numId, lvl') <- pNumInfo parstyle -> do
+                      let lvl = fromMaybe "0" lvl'
                       levelInfo <- lookupLevel numId lvl <$> asks envNumbering
                       return $ ListItem parstyle numId lvl levelInfo parparts
           _ -> let

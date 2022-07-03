@@ -286,6 +286,10 @@ tests = [ testGroup "document"
             "docx/lists_restarting.docx"
             "docx/lists_restarting.native"
           , testCompare
+            "lists with levels from styles"
+            "docx/lists_id_from_parent.docx"
+            "docx/lists_id_from_parent.native"
+          , testCompare
             "sublists reset numbering to 1"
             "docx/lists_sublist_reset.docx"
             "docx/lists_sublist_reset.native"
